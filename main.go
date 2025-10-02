@@ -34,6 +34,7 @@ type model struct {
 	networksTable   table.Model
 	containers      []container.Summary
 	images          []imagetypes.Summary
+	volumes         []volumetypes.Volume
 	err             error
 	loading         bool
 	focusIndex      int // 0: containers, 1: images, 2: volumes, 3: networks
@@ -217,6 +218,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Containers rows
 		m.containers = msg.containers
 		m.images = msg.images
+		m.volumes = msg.volumes
 		cRows := []table.Row{}
 		for _, c := range msg.containers {
 			id := c.ID
@@ -334,13 +336,17 @@ func (m model) View() string {
 		networksTitle,
 		baseStyle.Render(m.networksTable.View()),
 	)
-	// Build info panel based on focus: images or containers
+	// Build info panel based on focus: images, volumes, or containers
 	var infoTitle string
 	var infoBody string
-	if m.focusIndex == 1 { // images focused
+	switch m.focusIndex {
+	case 1: // images focused
 		infoTitle = titleStyle.Render("Image Info")
 		infoBody = m.renderSelectedImageInfo()
-	} else {
+	case 2: // volumes focused
+		infoTitle = titleStyle.Render("Volume Info")
+		infoBody = m.renderSelectedVolumeInfo()
+	default:
 		infoTitle = titleStyle.Render("Container Info")
 		infoBody = m.renderSelectedContainerInfo()
 	}
@@ -497,6 +503,63 @@ func (m model) renderSelectedImageInfo() string {
 
 	info := fmt.Sprintf("RepoTags: %s\nID: %s\nSize: %s\nRepoDigests: %s\nContainers: %s",
 		tags, idShort, sizeMB, digests, containers,
+	)
+	return info
+}
+
+func (m model) renderSelectedVolumeInfo() string {
+	// If we have no volumes loaded, show a hint
+	if len(m.volumes) == 0 || len(m.volumesTable.Rows()) == 0 {
+		return "No volume selected."
+	}
+
+	// Selected row: match by first column (Name)
+	selected := m.volumesTable.SelectedRow()
+	if selected == nil || len(selected) < 1 {
+		return "No volume selected."
+	}
+	name := selected[0]
+
+	var vol *volumetypes.Volume
+	for i := range m.volumes {
+		if m.volumes[i].Name == name {
+			vol = &m.volumes[i]
+			break
+		}
+	}
+	if vol == nil {
+		return "No volume selected."
+	}
+
+	// Prepare fields
+	driver := vol.Driver
+	mount := vol.Mountpoint
+	if len(mount) > 60 {
+		mount = mount[:57] + "..."
+	}
+	labels := "-"
+	if len(vol.Labels) > 0 {
+		pairs := make([]string, 0, len(vol.Labels))
+		for k, v := range vol.Labels {
+			pairs = append(pairs, fmt.Sprintf("%s=%s", k, v))
+		}
+		labels = strings.Join(pairs, ", ")
+	}
+	options := "-"
+	if len(vol.Options) > 0 {
+		pairs := make([]string, 0, len(vol.Options))
+		for k, v := range vol.Options {
+			pairs = append(pairs, fmt.Sprintf("%s=%s", k, v))
+		}
+		options = strings.Join(pairs, ", ")
+	}
+	created := vol.CreatedAt
+	if created == "" {
+		created = "-"
+	}
+
+	info := fmt.Sprintf("Name: %s\nDriver: %s\nMountpoint: %s\nLabels: %s\nOptions: %s\nCreated: %s",
+		name, driver, mount, labels, options, created,
 	)
 	return info
 }
