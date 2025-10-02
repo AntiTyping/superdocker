@@ -19,13 +19,13 @@ import (
 
 var (
 	baseStyle = lipgloss.NewStyle().
-			BorderStyle(lipgloss.NormalBorder()).
-			BorderForeground(lipgloss.Color("240"))
+		BorderStyle(lipgloss.NormalBorder()).
+		BorderForeground(lipgloss.Color("240"))
 
 	titleStyle = lipgloss.NewStyle().
-			Bold(true).
-			Foreground(lipgloss.Color("170")).
-			Padding(0, 1)
+		Bold(true).
+		Foreground(lipgloss.Color("170")).
+		Padding(0, 1)
 )
 
 type model struct {
@@ -98,9 +98,9 @@ func initialModel() model {
 	containerCols := []table.Column{
 		{Title: "Container ID", Width: 12},
 		{Title: "Image", Width: 25},
-		{Title: "Command", Width: 20},
-		{Title: "Status", Width: 20},
-		{Title: "Name", Width: 20},
+		{Title: "Command", Width: 0},
+		{Title: "Status", Width: 0},
+		{Title: "Name", Width: 0},
 	}
 	containersTable := table.New(
 		table.WithColumns(containerCols),
@@ -177,7 +177,7 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
- switch msg := msg.(type) {
+	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
@@ -335,40 +335,8 @@ func (m model) View() string {
 		Foreground(lipgloss.Color("241")).
 		Render("\n  ↑/↓: navigate • Tab: switch list • r: refresh • q: quit\n")
 
-	leftCol := fmt.Sprintf(
-		"\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s",
-		containersTitle,
-		baseStyle.Render(m.containersTable.View()),
-		imagesTitle,
-		baseStyle.Render(m.imagesTable.View()),
-		volumesTitle,
-		baseStyle.Render(m.volumesTable.View()),
-		networksTitle,
-		baseStyle.Render(m.networksTable.View()),
-	)
 	// Build info panel based on focus: images, volumes, networks, or containers
-	var infoTitle string
-	var infoBody string
-	switch m.focusIndex {
-	case 1: // images focused
-		infoTitle = titleStyle.Render("Image Info")
-		infoBody = m.renderSelectedImageInfo()
-	case 2: // volumes focused
-		infoTitle = titleStyle.Render("Volume Info")
-		infoBody = m.renderSelectedVolumeInfo()
-	case 3: // networks focused
-		infoTitle = titleStyle.Render("Network Info")
-		infoBody = m.renderSelectedNetworkInfo()
-	default:
-		infoTitle = titleStyle.Render("Container Info")
-		infoBody = m.renderSelectedContainerInfo()
-	}
 
- rightCol := fmt.Sprintf(
-		"\n%s\n\n%s",
-		infoTitle,
-		baseStyle.Render(infoBody),
-	)
 	var content string
 	if m.width > 0 {
 		lw := int(math.Round(float64(m.width) * 0.3))
@@ -379,10 +347,74 @@ func (m model) View() string {
 		if rw < 10 {
 			rw = 10
 		}
+		//var infoTitle string
+		var infoBody string
+		switch m.focusIndex {
+		case 1: // images focused
+			//infoTitle = titleStyle.Render("Image Info")
+			infoBody = m.renderSelectedImageInfo()
+		case 2: // volumes focused
+			//infoTitle = titleStyle.Render("Volume Info")
+			infoBody = m.renderSelectedVolumeInfo()
+		case 3: // networks focused
+			//infoTitle = titleStyle.Render("Network Info")
+			infoBody = m.renderSelectedNetworkInfo()
+		default:
+			//infoTitle = titleStyle.Render("Container Info")
+			infoBody = m.renderSelectedContainerInfo()
+		}
+		m.containersTable.SetWidth(lw - 2)
+		m.imagesTable.SetWidth(lw - 2)
+		m.volumesTable.SetWidth(lw - 2)
+		m.networksTable.SetWidth(lw - 2)
+		leftCol := fmt.Sprintf(
+			"\n%s\n%s\n%s\n%s\n",
+			baseStyle.Render(m.containersTable.View()),
+			baseStyle.Render(m.imagesTable.View()),
+			baseStyle.Render(m.volumesTable.View()),
+			baseStyle.Render(m.networksTable.View()),
+		)
+		s := baseStyle.Width(rw - 2).Height(m.height - 20)
+		rightCol := fmt.Sprintf(
+			"\n%s\n",
+			s.Render(infoBody),
+		)
 		leftStyled := lipgloss.NewStyle().Width(lw).Render(leftCol)
 		rightStyled := lipgloss.NewStyle().Width(rw).Render(rightCol)
 		content = lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
 	} else {
+		var infoTitle string
+		var infoBody string
+		switch m.focusIndex {
+		case 1: // images focused
+			infoTitle = titleStyle.Render("Image Info")
+			infoBody = m.renderSelectedImageInfo()
+		case 2: // volumes focused
+			infoTitle = titleStyle.Render("Volume Info")
+			infoBody = m.renderSelectedVolumeInfo()
+		case 3: // networks focused
+			infoTitle = titleStyle.Render("Network Info")
+			infoBody = m.renderSelectedNetworkInfo()
+		default:
+			infoTitle = titleStyle.Render("Container Info")
+			infoBody = m.renderSelectedContainerInfo()
+		}
+		leftCol := fmt.Sprintf(
+			"\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s",
+			containersTitle,
+			baseStyle.Render(m.containersTable.View()),
+			imagesTitle,
+			baseStyle.Render(m.imagesTable.View()),
+			volumesTitle,
+			baseStyle.Render(m.volumesTable.View()),
+			networksTitle,
+			baseStyle.Render(m.networksTable.View()),
+		)
+		rightCol := fmt.Sprintf(
+			"\n%s\n\n%s",
+			infoTitle,
+			baseStyle.Render(infoBody),
+		)
 		content = lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
 	}
 	return fmt.Sprintf("%s\n%s", content, help)
@@ -599,7 +631,6 @@ func main() {
 		os.Exit(1)
 	}
 }
-
 
 func (m model) renderSelectedNetworkInfo() string {
 	// If we have no networks loaded, show a hint
