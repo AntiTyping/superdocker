@@ -32,6 +32,7 @@ type model struct {
 	imagesTable     table.Model
 	volumesTable    table.Model
 	networksTable   table.Model
+	containers      []container.Summary
 	err             error
 	loading         bool
 	focusIndex      int // 0: containers, 1: images, 2: volumes, 3: networks
@@ -213,6 +214,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// Containers rows
+		m.containers = msg.containers
 		cRows := []table.Row{}
 		for _, c := range msg.containers {
 			id := c.ID
@@ -296,6 +298,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.imagesTable, cmd = m.imagesTable.Update(msg)
 	case 2:
 		m.volumesTable, cmd = m.volumesTable.Update(msg)
+	case 3:
+		m.networksTable, cmd = m.networksTable.Update(msg)
 	}
 	return m, cmd
 }
@@ -318,21 +322,118 @@ func (m model) View() string {
 		Render("\n  ↑/↓: navigate • Tab: switch list • r: refresh • q: quit\n")
 
 	leftCol := fmt.Sprintf(
-		"\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s",
+		"\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s",
 		containersTitle,
 		baseStyle.Render(m.containersTable.View()),
 		imagesTitle,
 		baseStyle.Render(m.imagesTable.View()),
 		volumesTitle,
 		baseStyle.Render(m.volumesTable.View()),
-	)
-	rightCol := fmt.Sprintf(
-		"\n%s\n\n%s",
 		networksTitle,
 		baseStyle.Render(m.networksTable.View()),
 	)
+	// Build container info panel based on selection in containers table
+	infoTitle := titleStyle.Render("Container Info")
+	infoBody := m.renderSelectedContainerInfo()
+
+	rightCol := fmt.Sprintf(
+		"\n%s\n\n%s",
+		infoTitle,
+		baseStyle.Render(infoBody),
+	)
 	content := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
 	return fmt.Sprintf("%s\n%s", content, help)
+}
+
+// renderSelectedContainerInfo renders details for the currently selected container.
+func (m model) renderSelectedContainerInfo() string {
+	// If we have no containers loaded, show a hint
+	if len(m.containers) == 0 || len(m.containersTable.Rows()) == 0 {
+		return "No container selected."
+	}
+
+	// Try to match by the selected row's first column (short ID)
+	selected := m.containersTable.SelectedRow()
+	if selected == nil || len(selected) == 0 {
+		return "No container selected."
+	}
+	shortID := selected[0]
+
+	var c *container.Summary
+	for i := range m.containers {
+		full := m.containers[i].ID
+		if len(full) > 12 {
+			full = full[:12]
+		}
+		if full == shortID {
+			c = &m.containers[i]
+			break
+		}
+	}
+	if c == nil {
+		return "No container selected."
+	}
+
+	// Prepare fields
+	name := ""
+	if len(c.Names) > 0 {
+		name = strings.TrimPrefix(c.Names[0], "/")
+	}
+	idShort := c.ID
+	if len(idShort) > 12 {
+		idShort = idShort[:12]
+	}
+	image := c.Image
+	cmd := c.Command
+	state := c.State
+	status := c.Status
+
+	// Ports
+	ports := "-"
+	if len(c.Ports) > 0 {
+		var ps []string
+		for _, p := range c.Ports {
+			entry := fmt.Sprintf("%d/%s", p.PrivatePort, p.Type)
+			if p.PublicPort != 0 {
+				entry = fmt.Sprintf("%d->%d/%s", p.PublicPort, p.PrivatePort, p.Type)
+			}
+			if p.IP != "" {
+				entry = p.IP + ":" + entry
+			}
+			ps = append(ps, entry)
+		}
+		ports = strings.Join(ps, ", ")
+	}
+
+	// Mounts
+	mounts := "-"
+	if len(c.Mounts) > 0 {
+		var ms []string
+		for _, mnt := range c.Mounts {
+			dest := mnt.Destination
+			src := mnt.Source
+			if len(src) > 30 {
+				src = src[:27] + "..."
+			}
+			ms = append(ms, fmt.Sprintf("%s:%s", src, dest))
+		}
+		mounts = strings.Join(ms, ", ")
+	}
+
+	// Networks
+	networks := "-"
+	if c.NetworkSettings != nil && len(c.NetworkSettings.Networks) > 0 {
+		var ns []string
+		for name := range c.NetworkSettings.Networks {
+			ns = append(ns, name)
+		}
+		networks = strings.Join(ns, ", ")
+	}
+
+	info := fmt.Sprintf("Name: %s\nID: %s\nImage: %s\nCommand: %s\nState: %s\nStatus: %s\nPorts: %s\nMounts: %s\nNetworks: %s",
+		name, idShort, image, cmd, state, status, ports, mounts, networks,
+	)
+	return info
 }
 
 func main() {
