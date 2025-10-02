@@ -35,6 +35,7 @@ type model struct {
 	containers      []container.Summary
 	images          []imagetypes.Summary
 	volumes         []volumetypes.Volume
+	networks        []networktypes.Summary
 	err             error
 	loading         bool
 	focusIndex      int // 0: containers, 1: images, 2: volumes, 3: networks
@@ -219,6 +220,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.containers = msg.containers
 		m.images = msg.images
 		m.volumes = msg.volumes
+		m.networks = msg.networks
 		cRows := []table.Row{}
 		for _, c := range msg.containers {
 			id := c.ID
@@ -336,7 +338,7 @@ func (m model) View() string {
 		networksTitle,
 		baseStyle.Render(m.networksTable.View()),
 	)
-	// Build info panel based on focus: images, volumes, or containers
+	// Build info panel based on focus: images, volumes, networks, or containers
 	var infoTitle string
 	var infoBody string
 	switch m.focusIndex {
@@ -346,6 +348,9 @@ func (m model) View() string {
 	case 2: // volumes focused
 		infoTitle = titleStyle.Render("Volume Info")
 		infoBody = m.renderSelectedVolumeInfo()
+	case 3: // networks focused
+		infoTitle = titleStyle.Render("Network Info")
+		infoBody = m.renderSelectedNetworkInfo()
 	default:
 		infoTitle = titleStyle.Render("Container Info")
 		infoBody = m.renderSelectedContainerInfo()
@@ -570,4 +575,59 @@ func main() {
 		fmt.Printf("Error: %v", err)
 		os.Exit(1)
 	}
+}
+
+
+func (m model) renderSelectedNetworkInfo() string {
+	// If we have no networks loaded, show a hint
+	if len(m.networks) == 0 || len(m.networksTable.Rows()) == 0 {
+		return "No network selected."
+	}
+
+	// Selected row: match by second column (short ID) or first column (Name)
+	selected := m.networksTable.SelectedRow()
+	if selected == nil || len(selected) < 2 {
+		return "No network selected."
+	}
+	name := selected[0]
+	shortID := selected[1]
+
+	var nw *networktypes.Summary
+	for i := range m.networks {
+		id := m.networks[i].ID
+		if strings.HasPrefix(id, "sha256:") {
+			id = id[len("sha256:"):]
+		}
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		if id == shortID || m.networks[i].Name == name {
+			nw = &m.networks[i]
+			break
+		}
+	}
+	if nw == nil {
+		return "No network selected."
+	}
+
+	idShort := nw.ID
+	if strings.HasPrefix(idShort, "sha256:") {
+		idShort = idShort[len("sha256:"):]
+	}
+	if len(idShort) > 12 {
+		idShort = idShort[:12]
+	}
+
+	info := fmt.Sprintf(
+		"Name: %s\nID: %s\nDriver: %s\nScope: %s\nInternal: %t\nAttachable: %t\nIngress: %t\nEnableIPv6: %t",
+		nw.Name,
+		idShort,
+		nw.Driver,
+		nw.Scope,
+		nw.Internal,
+		nw.Attachable,
+		nw.Ingress,
+		nw.EnableIPv6,
+	)
+	return info
 }
