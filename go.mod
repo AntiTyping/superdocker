@@ -1,4 +1,4 @@
-module superdocker
+module github.com/Antityping/superdocker
 
 go 1.24.7
 
