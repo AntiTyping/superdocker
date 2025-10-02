@@ -18,13 +18,13 @@ import (
 
 var (
 	baseStyle = lipgloss.NewStyle().
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderForeground(lipgloss.Color("240"))
+			BorderStyle(lipgloss.NormalBorder()).
+			BorderForeground(lipgloss.Color("240"))
 
 	titleStyle = lipgloss.NewStyle().
-		Bold(true).
-		Foreground(lipgloss.Color("170")).
-		Padding(0, 1)
+			Bold(true).
+			Foreground(lipgloss.Color("170")).
+			Padding(0, 1)
 )
 
 type model struct {
@@ -33,6 +33,7 @@ type model struct {
 	volumesTable    table.Model
 	networksTable   table.Model
 	containers      []container.Summary
+	images          []imagetypes.Summary
 	err             error
 	loading         bool
 	focusIndex      int // 0: containers, 1: images, 2: volumes, 3: networks
@@ -215,6 +216,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Containers rows
 		m.containers = msg.containers
+		m.images = msg.images
 		cRows := []table.Row{}
 		for _, c := range msg.containers {
 			id := c.ID
@@ -332,9 +334,16 @@ func (m model) View() string {
 		networksTitle,
 		baseStyle.Render(m.networksTable.View()),
 	)
-	// Build container info panel based on selection in containers table
-	infoTitle := titleStyle.Render("Container Info")
-	infoBody := m.renderSelectedContainerInfo()
+	// Build info panel based on focus: images or containers
+	var infoTitle string
+	var infoBody string
+	if m.focusIndex == 1 { // images focused
+		infoTitle = titleStyle.Render("Image Info")
+		infoBody = m.renderSelectedImageInfo()
+	} else {
+		infoTitle = titleStyle.Render("Container Info")
+		infoBody = m.renderSelectedContainerInfo()
+	}
 
 	rightCol := fmt.Sprintf(
 		"\n%s\n\n%s",
@@ -432,6 +441,62 @@ func (m model) renderSelectedContainerInfo() string {
 
 	info := fmt.Sprintf("Name: %s\nID: %s\nImage: %s\nCommand: %s\nState: %s\nStatus: %s\nPorts: %s\nMounts: %s\nNetworks: %s",
 		name, idShort, image, cmd, state, status, ports, mounts, networks,
+	)
+	return info
+}
+
+func (m model) renderSelectedImageInfo() string {
+	// If we have no images loaded, show a hint
+	if len(m.images) == 0 || len(m.imagesTable.Rows()) == 0 {
+		return "No image selected."
+	}
+
+	// Selected row: match by second column (short ID)
+	selected := m.imagesTable.SelectedRow()
+	if selected == nil || len(selected) < 2 {
+		return "No image selected."
+	}
+	shortID := selected[1]
+
+	var img *imagetypes.Summary
+	for i := range m.images {
+		id := m.images[i].ID
+		if strings.HasPrefix(id, "sha256:") {
+			id = id[len("sha256:"):]
+		}
+		if len(id) > 12 {
+			id = id[:12]
+		}
+		if id == shortID {
+			img = &m.images[i]
+			break
+		}
+	}
+	if img == nil {
+		return "No image selected."
+	}
+
+	// Prepare fields
+	idShort := img.ID
+	if strings.HasPrefix(idShort, "sha256:") {
+		idShort = idShort[len("sha256:"):]
+	}
+	if len(idShort) > 12 {
+		idShort = idShort[:12]
+	}
+	tags := "<none>:<none>"
+	if len(img.RepoTags) > 0 {
+		tags = strings.Join(img.RepoTags, ", ")
+	}
+	digests := "-"
+	if len(img.RepoDigests) > 0 {
+		digests = strings.Join(img.RepoDigests, ", ")
+	}
+	sizeMB := fmt.Sprintf("%.1fMB", float64(img.Size)/1024.0/1024.0)
+	containers := fmt.Sprintf("%d", img.Containers)
+
+	info := fmt.Sprintf("RepoTags: %s\nID: %s\nSize: %s\nRepoDigests: %s\nContainers: %s",
+		tags, idShort, sizeMB, digests, containers,
 	)
 	return info
 }
