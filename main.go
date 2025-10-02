@@ -43,6 +43,9 @@ type model struct {
 	// terminal size
 	width  int
 	height int
+	// styles for focused vs blurred tables
+	stylesFocused table.Styles
+	stylesBlurred table.Styles
 }
 
 type dataLoadedMsg struct {
@@ -208,21 +211,32 @@ func initialModel() model {
 		table.WithHeight(12),
 	)
 
-	s := table.DefaultStyles()
-	s.Header = s.Header.
+	// Base styles shared by focused/blurred variants
+	sBase := table.DefaultStyles()
+	sBase.Header = sBase.Header.
 		BorderStyle(lipgloss.NormalBorder()).
 		BorderForeground(lipgloss.Color("240")).
 		BorderBottom(true).
 		Bold(true).
 		Foreground(lipgloss.Color("170"))
-	s.Selected = s.Selected.
+	// Blurred tables: subtle selection color
+	sBlur := sBase
+	sBlur.Selected = sBlur.Selected.
 		Foreground(lipgloss.Color("229")).
 		Background(lipgloss.Color("57")).
 		Bold(false)
-	containersTable.SetStyles(s)
-	imagesTable.SetStyles(s)
-	volumesTable.SetStyles(s)
-	networksTable.SetStyles(s)
+	// Focused table: more vivid selection color
+	sFocus := sBase
+	sFocus.Selected = sFocus.Selected.
+		Foreground(lipgloss.Color("229")).
+		Background(lipgloss.Color("63")).
+		Bold(true)
+
+	// Apply initial styles (containers start focused)
+	containersTable.SetStyles(sFocus)
+	imagesTable.SetStyles(sBlur)
+	volumesTable.SetStyles(sBlur)
+	networksTable.SetStyles(sBlur)
 
 	return model{
 		containersTable: containersTable,
@@ -230,6 +244,8 @@ func initialModel() model {
 		volumesTable:    volumesTable,
 		networksTable:   networksTable,
 		loading:         true,
+		stylesFocused:   sFocus,
+		stylesBlurred:   sBlur,
 	}
 }
 
@@ -253,83 +269,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			return m, loadData
 		case "tab":
-			m.focusIndex = (m.focusIndex + 1) % 4
-			// Update focus states
-			switch m.focusIndex {
-			case 0: // containers
-				m.containersTable.Focus()
-				m.imagesTable.Blur()
-				m.volumesTable.Blur()
-				m.networksTable.Blur()
-			case 1: // images
-				m.containersTable.Blur()
-				m.imagesTable.Focus()
-				m.volumesTable.Blur()
-				m.networksTable.Blur()
-			case 2: // volumes
-				m.containersTable.Blur()
-				m.imagesTable.Blur()
-				m.volumesTable.Focus()
-				m.networksTable.Blur()
-			case 3: // networks
-				m.containersTable.Blur()
-				m.imagesTable.Blur()
-				m.volumesTable.Blur()
-				m.networksTable.Focus()
-			}
-			return m, nil
+			return m.nextPanel()
 		case "right":
-			m.focusIndex = (m.focusIndex + 1) % 4
-			// Update focus states
-			switch m.focusIndex {
-			case 0: // containers
-				m.containersTable.Focus()
-				m.imagesTable.Blur()
-				m.volumesTable.Blur()
-				m.networksTable.Blur()
-			case 1: // images
-				m.containersTable.Blur()
-				m.imagesTable.Focus()
-				m.volumesTable.Blur()
-				m.networksTable.Blur()
-			case 2: // volumes
-				m.containersTable.Blur()
-				m.imagesTable.Blur()
-				m.volumesTable.Focus()
-				m.networksTable.Blur()
-			case 3: // networks
-				m.containersTable.Blur()
-				m.imagesTable.Blur()
-				m.volumesTable.Blur()
-				m.networksTable.Focus()
-			}
-			return m, nil
-		case "left":
-			m.focusIndex = (m.focusIndex + 1) % 4
-			// Update focus states
-			switch m.focusIndex {
-			case 0: // containers
-				m.containersTable.Focus()
-				m.imagesTable.Blur()
-				m.volumesTable.Blur()
-				m.networksTable.Blur()
-			case 1: // images
-				m.containersTable.Focus()
-				m.imagesTable.Blur()
-				m.volumesTable.Blur()
-				m.networksTable.Blur()
-			case 2: // volumes
-				m.containersTable.Blur()
-				m.imagesTable.Focus()
-				m.volumesTable.Blur()
-				m.networksTable.Blur()
-			case 3: // networks
-				m.containersTable.Blur()
-				m.imagesTable.Blur()
-				m.volumesTable.Focus()
-				m.networksTable.Blur()
-			}
-			return m, nil
+			return m.nextPanel()
 		}
 
 	case dataLoadedMsg:
@@ -407,6 +349,50 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.networksTable, cmd = m.networksTable.Update(msg)
 	}
 	return m, cmd
+}
+
+func (m model) nextPanel() (tea.Model, tea.Cmd) {
+	m.focusIndex = (m.focusIndex + 1) % 4
+	// Update focus states and styles
+	switch m.focusIndex {
+	case 0: // containers
+		m.containersTable.Focus()
+		m.containersTable.SetStyles(m.stylesFocused)
+		m.imagesTable.Blur()
+		m.imagesTable.SetStyles(m.stylesBlurred)
+		m.volumesTable.Blur()
+		m.volumesTable.SetStyles(m.stylesBlurred)
+		m.networksTable.Blur()
+		m.networksTable.SetStyles(m.stylesBlurred)
+	case 1: // images
+		m.containersTable.Blur()
+		m.containersTable.SetStyles(m.stylesBlurred)
+		m.imagesTable.Focus()
+		m.imagesTable.SetStyles(m.stylesFocused)
+		m.volumesTable.Blur()
+		m.volumesTable.SetStyles(m.stylesBlurred)
+		m.networksTable.Blur()
+		m.networksTable.SetStyles(m.stylesBlurred)
+	case 2: // volumes
+		m.containersTable.Blur()
+		m.containersTable.SetStyles(m.stylesBlurred)
+		m.imagesTable.Blur()
+		m.imagesTable.SetStyles(m.stylesBlurred)
+		m.volumesTable.Focus()
+		m.volumesTable.SetStyles(m.stylesFocused)
+		m.networksTable.Blur()
+		m.networksTable.SetStyles(m.stylesBlurred)
+	case 3: // networks
+		m.containersTable.Blur()
+		m.containersTable.SetStyles(m.stylesBlurred)
+		m.imagesTable.Blur()
+		m.imagesTable.SetStyles(m.stylesBlurred)
+		m.volumesTable.Blur()
+		m.volumesTable.SetStyles(m.stylesBlurred)
+		m.networksTable.Focus()
+		m.networksTable.SetStyles(m.stylesFocused)
+	}
+	return m, nil
 }
 
 func (m model) View() string {
