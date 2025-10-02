@@ -53,6 +53,69 @@ type dataLoadedMsg struct {
 	err        error
 }
 
+// Helper: return a 12-char short ID
+func short12(id string) string {
+	if len(id) > 12 {
+		return id[:12]
+	}
+	return id
+}
+
+// Helper: strip sha256: prefix from IDs if present
+func stripSha256(id string) string {
+	if strings.HasPrefix(id, "sha256:") {
+		return id[len("sha256:"):]
+	}
+	return id
+}
+
+// Helper: trim a string to max n characters adding ... if needed
+func trimTo(s string, n int) string {
+	if n <= 3 || len(s) <= n {
+		return s
+	}
+	return s[:n-3] + "..."
+}
+
+// Helper: join a map as k=v, comma separated; returns "-" if empty
+func joinKV(m map[string]string) string {
+	if len(m) == 0 {
+		return "-"
+	}
+	pairs := make([]string, 0, len(m))
+	for k, v := range m {
+		pairs = append(pairs, fmt.Sprintf("%s=%s", k, v))
+	}
+	return strings.Join(pairs, ", ")
+}
+
+// Helper: compute left/right column widths from total width
+func computeColumnsWidth(total int) (int, int) {
+	lw := int(math.Round(float64(total) * 0.3))
+	if lw < 10 {
+		lw = 10
+	}
+	rw := total - lw
+	if rw < 10 {
+		rw = 10
+	}
+	return lw, rw
+}
+
+// Helper: get info panel title and body based on focus
+func (m model) infoTitleAndBody() (string, string) {
+	switch m.focusIndex {
+	case 1:
+		return titleStyle.Render("Image Info"), m.renderSelectedImageInfo()
+	case 2:
+		return titleStyle.Render("Volume Info"), m.renderSelectedVolumeInfo()
+	case 3:
+		return titleStyle.Render("Network Info"), m.renderSelectedNetworkInfo()
+	default:
+		return titleStyle.Render("Container Info"), m.renderSelectedContainerInfo()
+	}
+}
+
 func loadData() tea.Msg {
 	ctx := context.Background()
 	cli, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
@@ -231,18 +294,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.networks = msg.networks
 		cRows := []table.Row{}
 		for _, c := range msg.containers {
-			id := c.ID
-			if len(id) > 12 {
-				id = id[:12]
-			}
-			image := c.Image
-			if len(image) > 25 {
-				image = image[:22] + "..."
-			}
-			cmdStr := c.Command
-			if len(cmdStr) > 20 {
-				cmdStr = cmdStr[:17] + "..."
-			}
+			id := short12(c.ID)
+			image := trimTo(c.Image, 25)
+			cmdStr := trimTo(c.Command, 20)
 			status := c.Status
 			name := ""
 			if len(c.Names) > 0 {
@@ -260,13 +314,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(img.RepoTags) > 0 {
 				repoTag = img.RepoTags[0]
 			}
-			imgID := img.ID
-			if strings.HasPrefix(imgID, "sha256:") {
-				imgID = imgID[len("sha256:"):]
-			}
-			if len(imgID) > 12 {
-				imgID = imgID[:12]
-			}
+			imgID := short12(stripSha256(img.ID))
 			sizeMB := fmt.Sprintf("%.1fMB", float64(img.Size)/1024.0/1024.0)
 			iRows = append(iRows, table.Row{repoTag, imgID, sizeMB})
 		}
@@ -277,10 +325,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for _, v := range msg.volumes {
 			name := v.Name
 			driver := v.Driver
-			mount := v.Mountpoint
-			if len(mount) > 40 {
-				mount = mount[:37] + "..."
-			}
+			mount := trimTo(v.Mountpoint, 40)
 			vRows = append(vRows, table.Row{name, driver, mount})
 		}
 		m.volumesTable.SetRows(vRows)
@@ -289,13 +334,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		nRows := []table.Row{}
 		for _, n := range msg.networks {
 			name := n.Name
-			id := n.ID
-			if strings.HasPrefix(id, "sha256:") {
-				id = id[len("sha256:"):]
-			}
-			if len(id) > 12 {
-				id = id[:12]
-			}
+			id := short12(stripSha256(n.ID))
 			driver := n.Driver
 			scope := n.Scope
 			nRows = append(nRows, table.Row{name, id, driver, scope})
@@ -339,30 +378,8 @@ func (m model) View() string {
 
 	var content string
 	if m.width > 0 {
-		lw := int(math.Round(float64(m.width) * 0.3))
-		if lw < 10 {
-			lw = 10
-		}
-		rw := m.width - lw
-		if rw < 10 {
-			rw = 10
-		}
-		//var infoTitle string
-		var infoBody string
-		switch m.focusIndex {
-		case 1: // images focused
-			//infoTitle = titleStyle.Render("Image Info")
-			infoBody = m.renderSelectedImageInfo()
-		case 2: // volumes focused
-			//infoTitle = titleStyle.Render("Volume Info")
-			infoBody = m.renderSelectedVolumeInfo()
-		case 3: // networks focused
-			//infoTitle = titleStyle.Render("Network Info")
-			infoBody = m.renderSelectedNetworkInfo()
-		default:
-			//infoTitle = titleStyle.Render("Container Info")
-			infoBody = m.renderSelectedContainerInfo()
-		}
+		lw, rw := computeColumnsWidth(m.width)
+		_, infoBody := m.infoTitleAndBody()
 		m.containersTable.SetWidth(lw - 2)
 		m.imagesTable.SetWidth(lw - 2)
 		m.volumesTable.SetWidth(lw - 2)
@@ -383,22 +400,7 @@ func (m model) View() string {
 		rightStyled := lipgloss.NewStyle().Width(rw).Render(rightCol)
 		content = lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
 	} else {
-		var infoTitle string
-		var infoBody string
-		switch m.focusIndex {
-		case 1: // images focused
-			infoTitle = titleStyle.Render("Image Info")
-			infoBody = m.renderSelectedImageInfo()
-		case 2: // volumes focused
-			infoTitle = titleStyle.Render("Volume Info")
-			infoBody = m.renderSelectedVolumeInfo()
-		case 3: // networks focused
-			infoTitle = titleStyle.Render("Network Info")
-			infoBody = m.renderSelectedNetworkInfo()
-		default:
-			infoTitle = titleStyle.Render("Container Info")
-			infoBody = m.renderSelectedContainerInfo()
-		}
+		infoTitle, infoBody := m.infoTitleAndBody()
 		leftCol := fmt.Sprintf(
 			"\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s\n\n%s",
 			containersTitle,
@@ -436,10 +438,7 @@ func (m model) renderSelectedContainerInfo() string {
 
 	var c *container.Summary
 	for i := range m.containers {
-		full := m.containers[i].ID
-		if len(full) > 12 {
-			full = full[:12]
-		}
+		full := short12(m.containers[i].ID)
 		if full == shortID {
 			c = &m.containers[i]
 			break
@@ -454,10 +453,7 @@ func (m model) renderSelectedContainerInfo() string {
 	if len(c.Names) > 0 {
 		name = strings.TrimPrefix(c.Names[0], "/")
 	}
-	idShort := c.ID
-	if len(idShort) > 12 {
-		idShort = idShort[:12]
-	}
+	idShort := short12(c.ID)
 	image := c.Image
 	cmd := c.Command
 	state := c.State
@@ -486,10 +482,7 @@ func (m model) renderSelectedContainerInfo() string {
 		var ms []string
 		for _, mnt := range c.Mounts {
 			dest := mnt.Destination
-			src := mnt.Source
-			if len(src) > 30 {
-				src = src[:27] + "..."
-			}
+			src := trimTo(mnt.Source, 30)
 			ms = append(ms, fmt.Sprintf("%s:%s", src, dest))
 		}
 		mounts = strings.Join(ms, ", ")
@@ -526,13 +519,7 @@ func (m model) renderSelectedImageInfo() string {
 
 	var img *imagetypes.Summary
 	for i := range m.images {
-		id := m.images[i].ID
-		if strings.HasPrefix(id, "sha256:") {
-			id = id[len("sha256:"):]
-		}
-		if len(id) > 12 {
-			id = id[:12]
-		}
+		id := short12(stripSha256(m.images[i].ID))
 		if id == shortID {
 			img = &m.images[i]
 			break
@@ -543,13 +530,7 @@ func (m model) renderSelectedImageInfo() string {
 	}
 
 	// Prepare fields
-	idShort := img.ID
-	if strings.HasPrefix(idShort, "sha256:") {
-		idShort = idShort[len("sha256:"):]
-	}
-	if len(idShort) > 12 {
-		idShort = idShort[:12]
-	}
+	idShort := short12(stripSha256(img.ID))
 	tags := "<none>:<none>"
 	if len(img.RepoTags) > 0 {
 		tags = strings.Join(img.RepoTags, ", ")
@@ -593,26 +574,9 @@ func (m model) renderSelectedVolumeInfo() string {
 
 	// Prepare fields
 	driver := vol.Driver
-	mount := vol.Mountpoint
-	if len(mount) > 60 {
-		mount = mount[:57] + "..."
-	}
-	labels := "-"
-	if len(vol.Labels) > 0 {
-		pairs := make([]string, 0, len(vol.Labels))
-		for k, v := range vol.Labels {
-			pairs = append(pairs, fmt.Sprintf("%s=%s", k, v))
-		}
-		labels = strings.Join(pairs, ", ")
-	}
-	options := "-"
-	if len(vol.Options) > 0 {
-		pairs := make([]string, 0, len(vol.Options))
-		for k, v := range vol.Options {
-			pairs = append(pairs, fmt.Sprintf("%s=%s", k, v))
-		}
-		options = strings.Join(pairs, ", ")
-	}
+	mount := trimTo(vol.Mountpoint, 60)
+	labels := joinKV(vol.Labels)
+	options := joinKV(vol.Options)
 	created := vol.CreatedAt
 	if created == "" {
 		created = "-"
@@ -648,13 +612,7 @@ func (m model) renderSelectedNetworkInfo() string {
 
 	var nw *networktypes.Summary
 	for i := range m.networks {
-		id := m.networks[i].ID
-		if strings.HasPrefix(id, "sha256:") {
-			id = id[len("sha256:"):]
-		}
-		if len(id) > 12 {
-			id = id[:12]
-		}
+		id := short12(stripSha256(m.networks[i].ID))
 		if id == shortID || m.networks[i].Name == name {
 			nw = &m.networks[i]
 			break
@@ -664,13 +622,7 @@ func (m model) renderSelectedNetworkInfo() string {
 		return "No network selected."
 	}
 
-	idShort := nw.ID
-	if strings.HasPrefix(idShort, "sha256:") {
-		idShort = idShort[len("sha256:"):]
-	}
-	if len(idShort) > 12 {
-		idShort = idShort[:12]
-	}
+	idShort := short12(stripSha256(nw.ID))
 
 	info := fmt.Sprintf(
 		"Name: %s\nID: %s\nDriver: %s\nScope: %s\nInternal: %t\nAttachable: %t\nIngress: %t\nEnableIPv6: %t",
