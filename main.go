@@ -278,6 +278,58 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.networksTable.Focus()
 			}
 			return m, nil
+		case "right":
+			m.focusIndex = (m.focusIndex + 1) % 4
+			// Update focus states
+			switch m.focusIndex {
+			case 0: // containers
+				m.containersTable.Focus()
+				m.imagesTable.Blur()
+				m.volumesTable.Blur()
+				m.networksTable.Blur()
+			case 1: // images
+				m.containersTable.Blur()
+				m.imagesTable.Focus()
+				m.volumesTable.Blur()
+				m.networksTable.Blur()
+			case 2: // volumes
+				m.containersTable.Blur()
+				m.imagesTable.Blur()
+				m.volumesTable.Focus()
+				m.networksTable.Blur()
+			case 3: // networks
+				m.containersTable.Blur()
+				m.imagesTable.Blur()
+				m.volumesTable.Blur()
+				m.networksTable.Focus()
+			}
+			return m, nil
+		case "left":
+			m.focusIndex = (m.focusIndex + 1) % 4
+			// Update focus states
+			switch m.focusIndex {
+			case 0: // containers
+				m.containersTable.Focus()
+				m.imagesTable.Blur()
+				m.volumesTable.Blur()
+				m.networksTable.Blur()
+			case 1: // images
+				m.containersTable.Focus()
+				m.imagesTable.Blur()
+				m.volumesTable.Blur()
+				m.networksTable.Blur()
+			case 2: // volumes
+				m.containersTable.Blur()
+				m.imagesTable.Focus()
+				m.volumesTable.Blur()
+				m.networksTable.Blur()
+			case 3: // networks
+				m.containersTable.Blur()
+				m.imagesTable.Blur()
+				m.volumesTable.Focus()
+				m.networksTable.Blur()
+			}
+			return m, nil
 		}
 
 	case dataLoadedMsg:
