@@ -377,7 +377,7 @@ func (m model) View() string {
 	// Build info panel based on focus: images, volumes, networks, or containers
 
 	var content string
-	if m.width > 0 {
+	if m.width > 0 && m.height > 0 {
 		lw, rw := computeColumnsWidth(m.width)
 		_, infoBody := m.infoTitleAndBody()
 		m.containersTable.SetWidth(lw - 2)
@@ -391,7 +391,7 @@ func (m model) View() string {
 			baseStyle.Render(m.volumesTable.View()),
 			baseStyle.Render(m.networksTable.View()),
 		)
-		s := baseStyle.Width(rw - 2).Height(m.height - 20)
+		s := baseStyle.Width(rw - 2).Height(m.height - 6)
 		rightCol := fmt.Sprintf(
 			"\n%s\n",
 			s.Render(infoBody),
