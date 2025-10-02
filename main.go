@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -39,6 +40,9 @@ type model struct {
 	err             error
 	loading         bool
 	focusIndex      int // 0: containers, 1: images, 2: volumes, 3: networks
+	// terminal size
+	width  int
+	height int
 }
 
 type dataLoadedMsg struct {
@@ -173,7 +177,11 @@ func (m model) Init() tea.Cmd {
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 
-	switch msg := msg.(type) {
+ switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		m.width = msg.Width
+		m.height = msg.Height
+		return m, nil
 	case tea.KeyMsg:
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
@@ -356,12 +364,27 @@ func (m model) View() string {
 		infoBody = m.renderSelectedContainerInfo()
 	}
 
-	rightCol := fmt.Sprintf(
+ rightCol := fmt.Sprintf(
 		"\n%s\n\n%s",
 		infoTitle,
 		baseStyle.Render(infoBody),
 	)
-	content := lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
+	var content string
+	if m.width > 0 {
+		lw := int(math.Round(float64(m.width) * 0.3))
+		if lw < 10 {
+			lw = 10
+		}
+		rw := m.width - lw
+		if rw < 10 {
+			rw = 10
+		}
+		leftStyled := lipgloss.NewStyle().Width(lw).Render(leftCol)
+		rightStyled := lipgloss.NewStyle().Width(rw).Render(rightCol)
+		content = lipgloss.JoinHorizontal(lipgloss.Top, leftStyled, rightStyled)
+	} else {
+		content = lipgloss.JoinHorizontal(lipgloss.Top, leftCol, rightCol)
+	}
 	return fmt.Sprintf("%s\n%s", content, help)
 }
 
